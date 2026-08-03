@@ -300,5 +300,5 @@ Check shell syntax:
 
 ## License
 
-No license file is currently included. Add a license before redistributing the
-project or incorporating it into another project.
+Holocron Dashboard is released under the MIT License. See [LICENSE](LICENSE)
+for the complete terms.
