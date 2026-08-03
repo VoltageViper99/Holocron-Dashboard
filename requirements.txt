@@ -1,0 +1,3 @@
+# The terminal dashboard uses only the standard library. The graphical
+# dashboard requires PySide6. Runtime system tools are documented in README.md.
+PySide6>=6.7

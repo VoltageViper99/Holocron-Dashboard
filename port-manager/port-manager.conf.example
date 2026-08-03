@@ -1,0 +1,14 @@
+# Proton NAT-PMP gateway inside the active Proton WireGuard tunnel.
+PROTON_GATEWAY="10.2.0.1"
+PROTON_PRIVATE_PORT="1"
+PROTON_MAPPING_LIFETIME_SECONDS="60"
+RENEWAL_INTERVAL_SECONDS="45"
+
+# qBittorrent Web UI/API. This is the only managed application in v0.1.0.
+QBITTORRENT_URL="http://127.0.0.1:9091"
+QBITTORRENT_USERNAME="admin"
+QBITTORRENT_PASSWORD="CHANGE_ME"
+
+STATE_DIR="/var/lib/holocron/port-manager"
+LOG_DIR="/var/log/holocron/port-manager"
+RUNTIME_DIR="/run/holocron-port-manager"

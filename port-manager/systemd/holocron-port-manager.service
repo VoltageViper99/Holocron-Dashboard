@@ -1,0 +1,23 @@
+[Unit]
+Description=Holocron Proton Port Manager
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/holocron-port-manager/main.sh
+Environment=HOLOCRON_PORT_MANAGER_CONFIG=/etc/holocron/port-manager.conf
+Restart=on-failure
+RestartSec=5
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RuntimeDirectory=holocron-port-manager
+RuntimeDirectoryMode=0700
+ReadWritePaths=-/var/lib/holocron/port-manager -/var/log/holocron/port-manager -/run/holocron-port-manager
+
+[Install]
+WantedBy=multi-user.target
