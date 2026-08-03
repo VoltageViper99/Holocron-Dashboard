@@ -29,7 +29,7 @@ natpmpc() {
     printf 'Mapped public port 58321 protocol %s to local port 1 lifetime 60\n' "$4"
 }
 
-mapped_port="$(proton_renew_mapping)"
+mapped_port="$(provider_renew_mapping)"
 [[ "$mapped_port" == "58321" ]]
 
 QBITTORRENT_URL="http://127.0.0.1:9091"
@@ -82,6 +82,8 @@ state_write
 jq -e '
   .schema_version == 1 and
   .provider.forwarded_port == 58321 and
+  .provider.id == "proton" and
+  .provider.name == "Proton VPN" and
   .provider.protocols == ["udp", "tcp"] and
   .applications[0].id == "qbittorrent" and
   .applications[0].listening_port == 58321 and

@@ -1,10 +1,13 @@
+# Provider module to load from port-manager/providers/.
+VPN_PROVIDER="proton"
+
 # Proton NAT-PMP gateway inside the active Proton WireGuard tunnel.
 PROTON_GATEWAY="10.2.0.1"
 PROTON_PRIVATE_PORT="1"
 PROTON_MAPPING_LIFETIME_SECONDS="60"
 RENEWAL_INTERVAL_SECONDS="45"
 
-# qBittorrent Web UI/API. This is the only managed application in v0.1.0.
+# qBittorrent Web UI/API.
 QBITTORRENT_URL="http://127.0.0.1:9091"
 QBITTORRENT_USERNAME="admin"
 QBITTORRENT_PASSWORD="CHANGE_ME"

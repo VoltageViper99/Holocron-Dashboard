@@ -10,6 +10,7 @@ load_config() {
     # shellcheck disable=SC1090
     source "$config_file"
 
+    : "${VPN_PROVIDER:=proton}"
     : "${PROTON_GATEWAY:=10.2.0.1}"
     : "${PROTON_PRIVATE_PORT:=1}"
     : "${PROTON_MAPPING_LIFETIME_SECONDS:=60}"

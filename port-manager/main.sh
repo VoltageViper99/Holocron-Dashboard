@@ -12,16 +12,31 @@ source "$APP_DIR/lib/utils.sh"
 source "$APP_DIR/lib/logger.sh"
 # shellcheck source=lib/state.sh
 source "$APP_DIR/lib/state.sh"
-# shellcheck source=providers/proton.sh
-source "$APP_DIR/providers/proton.sh"
 # shellcheck source=applications/qbittorrent.sh
 source "$APP_DIR/applications/qbittorrent.sh"
 
 CONFIG_FILE="${HOLOCRON_PORT_MANAGER_CONFIG:-/etc/holocron/port-manager.conf}"
 
+load_provider() {
+    local provider_file="$APP_DIR/providers/${VPN_PROVIDER}.sh"
+    if [[ ! "$VPN_PROVIDER" =~ ^[a-z0-9_-]+$ || ! -r "$provider_file" ]]; then
+        printf 'ERROR: Unsupported VPN provider: %s\n' "$VPN_PROVIDER" >&2
+        return 1
+    fi
+
+    # shellcheck disable=SC1090
+    source "$provider_file"
+    if ! declare -F provider_renew_mapping >/dev/null ||
+        [[ -z "${PROVIDER_NAME:-}" || -z "${PROVIDER_REQUIRED_COMMANDS+x}" ]]; then
+        printf 'ERROR: Provider %s does not implement the provider interface\n' "$VPN_PROVIDER" >&2
+        return 1
+    fi
+}
+
 main() {
     load_config "$CONFIG_FILE" || exit 1
-    require_commands curl jq natpmpc flock date tail mktemp mv sed tr install sleep rm || exit 1
+    load_provider || exit 1
+    require_commands curl jq flock date tail mktemp mv sed tr install sleep rm $PROVIDER_REQUIRED_COMMANDS || exit 1
     initialise_runtime || exit 1
     acquire_instance_lock
 
@@ -35,13 +50,13 @@ main() {
     while true; do
         now="$(date +%s)"
         if (( now >= next_renewal )); then
-            logger_log "INFO" "Starting Proton NAT-PMP renewal"
+            logger_log "INFO" "Starting $PROVIDER_NAME port renewal"
             renewal_ok=false
             STATE_SERVICE_STATUS="running"
             STATE_PROVIDER_STATUS="connecting"
             STATE_ERROR=""
 
-            if forwarded_port="$(proton_renew_mapping)"; then
+            if forwarded_port="$(provider_renew_mapping)"; then
                 renewal_ok=true
                 STATE_PROVIDER_STATUS="connected"
                 previous_port="$STATE_FORWARDED_PORT"
@@ -97,10 +112,10 @@ main() {
                     logger_event "ERROR" "$STATE_QBIT_ERROR"
                 fi
 
-                logger_event "INFO" "Proton NAT-PMP renewal successful"
+                logger_event "INFO" "$PROVIDER_NAME port renewal successful"
             else
                 STATE_PROVIDER_STATUS="disconnected"
-                STATE_ERROR="Proton NAT-PMP renewal failed"
+                STATE_ERROR="$PROVIDER_NAME port renewal failed"
                 logger_event "ERROR" "$STATE_ERROR"
             fi
 

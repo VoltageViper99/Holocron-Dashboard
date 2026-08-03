@@ -152,6 +152,16 @@ Important settings include:
 - gui_font_size for the Qt display.
 - speech_enabled, startup_phrase, and startup_audio.
 
+Port Manager currently supports Proton VPN through the `proton` provider
+module. Select it in `/etc/holocron/port-manager.conf` with:
+
+    VPN_PROVIDER="proton"
+
+Provider modules use a shared renewal interface, so additional VPN providers
+can be added under `port-manager/providers/` without changing qBittorrent or
+dashboard code. A provider must be implemented and tested before it can be
+selected; changing the setting alone does not add support for a provider.
+
 Example container selection:
 
     "containers": ["immich_server", "adguardhome", "slskd"]

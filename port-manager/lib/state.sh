@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 
 STATE_SERVICE_STATUS="starting"
+STATE_PROVIDER_ID="unknown"
+STATE_PROVIDER_NAME="Unknown provider"
 STATE_PROVIDER_STATUS="unknown"
+STATE_PROVIDER_GATEWAY=""
+STATE_PROVIDER_MAPPING_LIFETIME_SECONDS=0
+STATE_PROVIDER_PROTOCOLS_JSON='[]'
 STATE_FORWARDED_PORT=""
 STATE_LAST_SUCCESS=""
 STATE_NEXT_RENEWAL_EPOCH=0
@@ -31,10 +36,13 @@ state_write() {
         --argjson seconds_until "$remaining" \
         --arg last_success "$STATE_LAST_SUCCESS" \
         --arg error "$STATE_ERROR" \
+        --arg provider_id "$STATE_PROVIDER_ID" \
+        --arg provider_name "$STATE_PROVIDER_NAME" \
         --arg provider_status "$STATE_PROVIDER_STATUS" \
-        --arg gateway "$PROTON_GATEWAY" \
+        --arg gateway "$STATE_PROVIDER_GATEWAY" \
         --arg forwarded_port "$STATE_FORWARDED_PORT" \
-        --argjson lifetime "$PROTON_MAPPING_LIFETIME_SECONDS" \
+        --argjson lifetime "$STATE_PROVIDER_MAPPING_LIFETIME_SECONDS" \
+        --argjson protocols "$STATE_PROVIDER_PROTOCOLS_JSON" \
         --arg qbit_status "$STATE_QBIT_STATUS" \
         --arg qbit_port "$STATE_QBIT_LISTENING_PORT" \
         --arg api_status "$STATE_QBIT_API_STATUS" \
@@ -56,13 +64,13 @@ state_write() {
             error:($error | if length>0 then . else null end)
           },
           provider:{
-            id:"proton",
-            name:"Proton VPN",
+            id:$provider_id,
+            name:$provider_name,
             status:$provider_status,
             gateway:$gateway,
             forwarded_port:($forwarded_port | tonumber? // null),
             mapping_lifetime_seconds:$lifetime,
-            protocols:["udp","tcp"]
+            protocols:$protocols
           },
           applications:[{
             id:"qbittorrent",

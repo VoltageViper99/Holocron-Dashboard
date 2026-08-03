@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+PROVIDER_ID="proton"
+PROVIDER_NAME="Proton VPN"
+PROVIDER_REQUIRED_COMMANDS="natpmpc"
+STATE_PROVIDER_ID="$PROVIDER_ID"
+STATE_PROVIDER_NAME="$PROVIDER_NAME"
+STATE_PROVIDER_GATEWAY="${PROTON_GATEWAY:-}"
+STATE_PROVIDER_MAPPING_LIFETIME_SECONDS="${PROTON_MAPPING_LIFETIME_SECONDS:-0}"
+STATE_PROVIDER_PROTOCOLS_JSON='["udp","tcp"]'
+
 _proton_map_protocol() {
     local protocol="$1" requested_public_port="$2" output port
     if ! output="$(natpmpc -a "$PROTON_PRIVATE_PORT" "$requested_public_port" \
@@ -18,7 +27,7 @@ _proton_map_protocol() {
     printf '%s\n' "$port"
 }
 
-proton_renew_mapping() {
+provider_renew_mapping() {
     local requested_public_port udp_port tcp_port
     requested_public_port="${STATE_FORWARDED_PORT:-0}"
 
