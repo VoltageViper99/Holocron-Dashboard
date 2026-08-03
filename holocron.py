@@ -29,7 +29,7 @@ from urllib.request import Request, urlopen
 
 
 APP_NAME = "HOLOCRON"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "holocron" / "config.json"
 
 
@@ -57,6 +57,15 @@ class Config:
     journal_tail_lines: int = 100
     journal_refresh_seconds: float = 2.0
     journal_priority: str = "info"
+    theme_name: str = "Holocron Green"
+    theme_background: str = "#020504"
+    theme_panel: str = "#030806"
+    theme_primary: str = "#66ff66"
+    theme_dim: str = "#2c8f42"
+    theme_warning: str = "#ffd166"
+    theme_error: str = "#ff5f56"
+    cursor_hide_enabled: bool = True
+    cursor_hide_seconds: int = 5
 
     @classmethod
     def from_file(cls, path: Path) -> "Config":

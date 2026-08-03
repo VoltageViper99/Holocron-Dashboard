@@ -1,7 +1,7 @@
 # Holocron Dashboard
 
 Holocron is a retro-green homelab dashboard for Docker services, host health,
-system events, and network activity. Version **0.5.0** provides two clients:
+system events, and network activity. Version **0.6.0** provides two clients:
 
 - **holocron**: a terminal/curses dashboard for a local console, SSH session, or tmux pane.
 - **holocron-gui**: a native PySide6/Qt dashboard for a dedicated 1080p display.
@@ -48,7 +48,8 @@ agent path. Port Manager publishes its state at:
 - Docker service matrix and scrolling server event stream.
 - Network history graph and storage information.
 - Port Manager page with VPN, qBittorrent, and recent-event state.
-- Keyboard-friendly settings for display size and weather location.
+- Keyboard-friendly settings for dashboard, weather, audio, journal, theme, and cursor behaviour.
+- Curated colour themes, custom colour swatches, and fullscreen cursor hiding.
 - Windowed mode for testing and Cage mode for kiosk-style deployment.
 
 ### Port Manager
@@ -185,7 +186,10 @@ Example container selection:
 
 Leave weather_location empty for automatic detection, or set a city, postcode,
 or airport code. Weather is fetched asynchronously and cached. The GUI's S
-settings screen can update the display size and weather location.
+settings screen can update the display, monitoring, weather, audio, theme, and
+cursor behaviour. Theme presets include Holocron Green, Amber Terminal, Ice
+Blue, and Monochrome; each colour can also be changed with a swatch picker.
+The cursor can be hidden after a configurable period of fullscreen inactivity.
 
 ## Command-line options
 

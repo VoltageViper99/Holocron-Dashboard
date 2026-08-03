@@ -72,7 +72,7 @@ FORECAST_RESPONSE = {
 
 class LogFormattingTests(unittest.TestCase):
     def test_package_version(self):
-        self.assertEqual(VERSION, "0.5.0")
+        self.assertEqual(VERSION, "0.6.0")
 
     def test_release_version_parsing(self):
         self.assertEqual(version_tuple("v0.6.1"), (0, 6, 1))
@@ -83,7 +83,7 @@ class LogFormattingTests(unittest.TestCase):
             "zipball_url": "https://api.github.com/repos/VoltageViper99/Holocron-Dashboard/zipball/v0.6.0",
             "html_url": "https://github.com/VoltageViper99/Holocron-Dashboard/releases/tag/v0.6.0",
         })
-        self.assertTrue(is_newer(release, VERSION))
+        self.assertTrue(is_newer(release, "0.5.0"))
 
     def test_port_manager_status_preserves_extensible_applications(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -112,13 +112,21 @@ class LogFormattingTests(unittest.TestCase):
     def test_config_saves_gui_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "nested" / "config.json"
-            config = Config(gui_font_size=22, weather_location="Hobart")
+            config = Config(
+                gui_font_size=22,
+                weather_location="Hobart",
+                theme_name="Ice Blue",
+                theme_primary="#73d7ff",
+                cursor_hide_seconds=10,
+            )
 
             config.save(path)
 
             stored = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(stored["gui_font_size"], 22)
             self.assertEqual(stored["weather_location"], "Hobart")
+            self.assertEqual(stored["theme_name"], "Ice Blue")
+            self.assertEqual(stored["cursor_hide_seconds"], 10)
             self.assertEqual(Config.from_file(path).gui_font_size, 22)
 
     def test_docker_timestamp_is_shortened(self):

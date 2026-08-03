@@ -20,5 +20,14 @@
   "journal_enabled": true,
   "journal_tail_lines": 100,
   "journal_refresh_seconds": 2.0,
-  "journal_priority": "info"
+  "journal_priority": "info",
+  "theme_name": "Holocron Green",
+  "theme_background": "#020504",
+  "theme_panel": "#030806",
+  "theme_primary": "#66ff66",
+  "theme_dim": "#2c8f42",
+  "theme_warning": "#ffd166",
+  "theme_error": "#ff5f56",
+  "cursor_hide_enabled": true,
+  "cursor_hide_seconds": 5
 }

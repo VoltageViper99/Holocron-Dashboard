@@ -15,12 +15,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from PySide6.QtCore import QTimer, Qt, QRectF, QPointF, Signal
-    from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
+    from PySide6.QtCore import QEvent, QTimer, Qt, QRectF, QPointF, Signal
+    from PySide6.QtGui import QColor, QCursor, QPainter, QPen, QPolygonF
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-        QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
-        QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+        QColorDialog, QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel,
+        QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
         QProgressBar, QTableWidget, QTableWidgetItem,
         QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
     )
@@ -38,6 +38,36 @@ WARN = "#ffd166"
 RED = "#ff5f56"
 FONT = "IBM Plex Mono"
 EVENT_ROTATION_SECONDS = 30
+
+THEME_PRESETS = {
+    "Holocron Green": {
+        "background": "#020504", "panel": "#030806", "primary": "#66ff66",
+        "dim": "#2c8f42", "warning": "#ffd166", "error": "#ff5f56",
+    },
+    "Amber Terminal": {
+        "background": "#080604", "panel": "#100b05", "primary": "#ffb000",
+        "dim": "#9a6910", "warning": "#ffe08a", "error": "#ff665c",
+    },
+    "Ice Blue": {
+        "background": "#03070a", "panel": "#061117", "primary": "#73d7ff",
+        "dim": "#267d9e", "warning": "#ffd166", "error": "#ff6b7a",
+    },
+    "Monochrome": {
+        "background": "#050505", "panel": "#101010", "primary": "#eeeeee",
+        "dim": "#777777", "warning": "#dddddd", "error": "#aaaaaa",
+    },
+}
+
+
+def apply_theme_values(colors: dict[str, str]) -> None:
+    """Update the module palette used by stylesheets and custom paint events."""
+    global BLACK, PANEL, GREEN, DIM, WARN, RED
+    BLACK = colors["background"]
+    PANEL = colors["panel"]
+    GREEN = colors["primary"]
+    DIM = colors["dim"]
+    WARN = colors["warning"]
+    RED = colors["error"]
 
 
 def fmt_bytes(value: float) -> str:
@@ -303,6 +333,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._general_tab(config), "Dashboard")
         tabs.addTab(self._weather_tab(config), "Weather & Audio")
         tabs.addTab(self._system_tab(config), "System Sources")
+        tabs.addTab(self._theme_tab(config), "Theme & Cursor")
         tabs.addTab(self._updates_tab(config), "Updates")
         layout.addWidget(tabs, 1)
 
@@ -410,6 +441,69 @@ class SettingsDialog(QDialog):
         form.addRow("", hint)
         return tab
 
+    def _theme_tab(self, config: holocron.Config) -> QWidget:
+        tab = QWidget(); form = self._form(); tab.setLayout(form)
+        self.theme_name = QComboBox()
+        self.theme_name.addItems(list(THEME_PRESETS) + ["Custom"])
+        self.theme_name.setCurrentText(config.theme_name)
+        if self.theme_name.currentText() != config.theme_name:
+            self.theme_name.setCurrentText("Custom")
+        self.theme_colors = {
+            "background": config.theme_background,
+            "panel": config.theme_panel,
+            "primary": config.theme_primary,
+            "dim": config.theme_dim,
+            "warning": config.theme_warning,
+            "error": config.theme_error,
+        }
+        self.theme_buttons: dict[str, QPushButton] = {}
+        labels = {
+            "background": "Background",
+            "panel": "Panels",
+            "primary": "Primary text",
+            "dim": "Secondary text",
+            "warning": "Warnings",
+            "error": "Errors",
+        }
+        self.theme_name.currentTextChanged.connect(self._preset_changed)
+        form.addRow("Theme preset", self.theme_name)
+        for key, label in labels.items():
+            button = QPushButton()
+            button.clicked.connect(lambda checked=False, name=key: self._choose_color(name))
+            self.theme_buttons[key] = button
+            form.addRow(label, button)
+            self._paint_color_button(key)
+        self.cursor_hide_enabled = self._check(config.cursor_hide_enabled)
+        self.cursor_hide_seconds = self._spin(config.cursor_hide_seconds, 1, 3600, " s")
+        form.addRow("Hide cursor when inactive", self.cursor_hide_enabled)
+        form.addRow("Cursor inactivity timeout", self.cursor_hide_seconds)
+        hint = QLabel("The cursor is hidden only in fullscreen mode and returns when you move the mouse or open a dialog.")
+        hint.setWordWrap(True); hint.setObjectName("settingsHint")
+        form.addRow("", hint)
+        return tab
+
+    def _paint_color_button(self, name: str) -> None:
+        color = self.theme_colors[name]
+        self.theme_buttons[name].setText(color.upper())
+        self.theme_buttons[name].setStyleSheet(
+            f"background:{color}; color:{BLACK}; border:1px solid {GREEN}; padding:10px;"
+        )
+
+    def _preset_changed(self, name: str) -> None:
+        if name not in THEME_PRESETS:
+            return
+        self.theme_colors = dict(THEME_PRESETS[name])
+        for key in self.theme_buttons:
+            self._paint_color_button(key)
+
+    def _choose_color(self, name: str) -> None:
+        color = QColorDialog.getColor(QColor(self.theme_colors[name]), self, f"Choose {name} colour")
+        if not color.isValid():
+            return
+        self.theme_colors[name] = color.name().lower()
+        self.theme_name.setCurrentText("Custom")
+        self._paint_color_button(name)
+
     def _updates_tab(self, config: holocron.Config) -> QWidget:
         del config
         tab = QWidget(); form = self._form(); tab.setLayout(form)
@@ -449,6 +543,15 @@ class SettingsDialog(QDialog):
         config.journal_priority = self.journal_priority.currentText()
         config.update_refresh_seconds = self.update_refresh_seconds.value()
         config.log_file = self.log_file.text().strip() or config.log_file
+        config.theme_name = self.theme_name.currentText()
+        config.theme_background = self.theme_colors["background"]
+        config.theme_panel = self.theme_colors["panel"]
+        config.theme_primary = self.theme_colors["primary"]
+        config.theme_dim = self.theme_colors["dim"]
+        config.theme_warning = self.theme_colors["warning"]
+        config.theme_error = self.theme_colors["error"]
+        config.cursor_hide_enabled = self.cursor_hide_enabled.isChecked()
+        config.cursor_hide_seconds = self.cursor_hide_seconds.value()
 
 
 class UpdateDialog(QDialog):
@@ -692,6 +795,7 @@ class Dashboard(QMainWindow):
     def __init__(self, config: holocron.Config, host: str, agent_command: str, config_path: Path = holocron.DEFAULT_CONFIG_PATH) -> None:
         super().__init__(); self.config = config; self.host = host; self.agent_command = agent_command
         self.config_path = config_path
+        apply_theme_values(self._config_theme())
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="holocron-gui")
         self.snapshot_future: Future[dict[str, object]] | None = None
         self.weather_future: Future[tuple[int, dict[str, str]]] | None = None
@@ -701,11 +805,26 @@ class Dashboard(QMainWindow):
         self.event_sources: list[dict[str, object]] = []
         self.event_source_index = 0
         self.last_event_rotation = time.monotonic()
+        self.last_cursor_activity = time.monotonic()
+        self.cursor_hidden = False
+        self.setMouseTracking(True)
         self.setWindowTitle("Holocron Dashboard"); self.resize(1920, 1080)
         self._build(); self._style()
         self.timer = QTimer(self); self.timer.timeout.connect(self.tick); self.timer.start(250)
         self.clock_timer = QTimer(self); self.clock_timer.timeout.connect(self.update_clock); self.clock_timer.start(1000)
+        self.cursor_timer = QTimer(self); self.cursor_timer.timeout.connect(self._cursor_tick); self.cursor_timer.start(250)
+        QApplication.instance().installEventFilter(self)
         self.update_clock(); self.tick()
+
+    def _config_theme(self) -> dict[str, str]:
+        return {
+            "background": self.config.theme_background,
+            "panel": self.config.theme_panel,
+            "primary": self.config.theme_primary,
+            "dim": self.config.theme_dim,
+            "warning": self.config.theme_warning,
+            "error": self.config.theme_error,
+        }
 
     def _build(self) -> None:
         self.pages = QStackedWidget()
@@ -775,6 +894,29 @@ class Dashboard(QMainWindow):
     def update_clock(self) -> None:
         now = time.localtime(); self.clock.setText(time.strftime("Time: %H:%M:%S\nDate: %d-%m-%Y", now))
 
+    def _show_cursor(self) -> None:
+        self.last_cursor_activity = time.monotonic()
+        if self.cursor_hidden:
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+            self.cursor_hidden = False
+
+    def _cursor_tick(self) -> None:
+        if (
+            self.config.cursor_hide_enabled
+            and self.isFullScreen()
+            and not self.cursor_hidden
+            and QApplication.activeModalWidget() is None
+            and time.monotonic() - self.last_cursor_activity >= self.config.cursor_hide_seconds
+        ):
+            self.setCursor(QCursor(Qt.CursorShape.BlankCursor))
+            self.cursor_hidden = True
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress):
+            if QApplication.activeModalWidget() is None and self.isActiveWindow():
+                self._show_cursor()
+        return super().eventFilter(watched, event)
+
     def _snapshot(self) -> dict[str, object]:
         if self.host:
             command = ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", self.host, self.agent_command]
@@ -806,6 +948,7 @@ class Dashboard(QMainWindow):
         )
 
     def show_settings(self) -> None:
+        self._show_cursor()
         dialog = SettingsDialog(self.config, self)
         dialog.update_requested.connect(self.show_update_dialog)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -820,7 +963,10 @@ class Dashboard(QMainWindow):
             QMessageBox.critical(self, "Settings not saved", str(exc))
             return
 
+        apply_theme_values(self._config_theme())
         self._style()
+        for widget in self.findChildren(QWidget):
+            widget.update()
         self.force_refresh = True
         if self.config.weather_enabled and (
             self.config.weather_location != old_location
@@ -833,8 +979,10 @@ class Dashboard(QMainWindow):
         self.connection.setText("SETTINGS SAVED")
 
     def show_update_dialog(self) -> None:
+        self._show_cursor()
         dialog = UpdateDialog(self)
         dialog.exec()
+        self._show_cursor()
 
     def tick(self) -> None:
         if self.snapshot_future and self.snapshot_future.done():
@@ -962,7 +1110,8 @@ class Dashboard(QMainWindow):
         else: super().keyPressEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        self.timer.stop(); self.executor.shutdown(wait=False, cancel_futures=True); super().closeEvent(event)
+        QApplication.instance().removeEventFilter(self)
+        self.timer.stop(); self.cursor_timer.stop(); self.executor.shutdown(wait=False, cancel_futures=True); super().closeEvent(event)
 
 
 def main() -> int:
