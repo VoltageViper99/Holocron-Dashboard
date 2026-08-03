@@ -15,18 +15,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from PySide6.QtCore import QTimer, Qt, QRectF, QPointF
+    from PySide6.QtCore import QTimer, Qt, QRectF, QPointF, Signal
     from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
     from PySide6.QtWidgets import (
-        QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame,
-        QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
-        QPlainTextEdit, QProgressBar, QTableWidget, QTableWidgetItem,
-        QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
+        QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+        QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+        QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+        QProgressBar, QTableWidget, QTableWidgetItem,
+        QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
     )
 except ImportError as exc:  # pragma: no cover - exercised on the TV client
     raise SystemExit("PySide6 is required: sudo pacman -S pyside6") from exc
 
 import holocron
+import updater
 
 GREEN = "#66ff66"
 DIM = "#2c8f42"
@@ -282,37 +284,27 @@ class NetworkPanel(Panel):
 
 
 class SettingsDialog(QDialog):
-    """Large, keyboard-friendly settings dialog for the wall display."""
+    """Keyboard-friendly editor for settings that can be changed in Qt."""
 
-    def __init__(self, font_size: int, weather_location: str, parent: QWidget) -> None:
+    update_requested = Signal()
+
+    def __init__(self, config: holocron.Config, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Holocron Settings")
         self.setModal(True)
-        self.setMinimumWidth(720)
+        self.setMinimumSize(900, 640)
         layout = QVBoxLayout(self)
         title = QLabel("HOLOCRON SETTINGS")
         title.setObjectName("settingsTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        form = QFormLayout()
-        form.setContentsMargins(32, 24, 32, 24)
-        form.setHorizontalSpacing(28)
-        form.setVerticalSpacing(24)
-        self.font_size = QSpinBox()
-        self.font_size.setRange(12, 32)
-        self.font_size.setSuffix(" px")
-        self.font_size.setValue(max(12, min(32, font_size)))
-        self.weather_location = QLineEdit(weather_location)
-        self.weather_location.setPlaceholderText("e.g. Burnie, Hobart, 7320")
-        form.addRow("Dashboard font size", self.font_size)
-        form.addRow("Weather location", self.weather_location)
-        layout.addLayout(form)
-
-        hint = QLabel("Leave the weather location blank to detect it automatically.")
-        hint.setObjectName("settingsHint")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(hint)
+        tabs = QTabWidget()
+        tabs.addTab(self._general_tab(config), "Dashboard")
+        tabs.addTab(self._weather_tab(config), "Weather & Audio")
+        tabs.addTab(self._system_tab(config), "System Sources")
+        tabs.addTab(self._updates_tab(config), "Updates")
+        layout.addWidget(tabs, 1)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
@@ -321,6 +313,231 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _form() -> QFormLayout:
+        form = QFormLayout()
+        form.setContentsMargins(32, 24, 32, 24)
+        form.setHorizontalSpacing(28)
+        form.setVerticalSpacing(16)
+        return form
+
+    @staticmethod
+    def _check(value: bool) -> QCheckBox:
+        box = QCheckBox()
+        box.setChecked(value)
+        return box
+
+    @staticmethod
+    def _spin(value: int, minimum: int, maximum: int, suffix: str = "") -> QSpinBox:
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setValue(value)
+        spin.setSuffix(suffix)
+        return spin
+
+    @staticmethod
+    def _double(value: float, minimum: float, maximum: float, suffix: str = "") -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setDecimals(1)
+        spin.setSingleStep(0.5)
+        spin.setValue(value)
+        spin.setSuffix(suffix)
+        return spin
+
+    def _general_tab(self, config: holocron.Config) -> QWidget:
+        tab = QWidget(); form = self._form(); tab.setLayout(form)
+        self.title = QLineEdit(config.title)
+        self.font_size = self._spin(config.gui_font_size, 12, 32, " px")
+        self.rotation_seconds = self._spin(config.rotation_seconds, 5, 3600, " s")
+        self.tail_lines = self._spin(config.tail_lines, 10, 5000, " lines")
+        self.refresh_seconds = self._double(config.refresh_seconds, 0.5, 60.0, " s")
+        self.containers = QLineEdit(", ".join(config.containers or []))
+        self.containers.setPlaceholderText("Blank = all containers")
+        self.dashboard_mode = self._check(config.dashboard_mode)
+        self.show_all_containers = self._check(config.show_all_containers)
+        self.show_timestamps = self._check(config.show_timestamps)
+        self.simplify_messages = self._check(config.simplify_messages)
+        form.addRow("Dashboard title", self.title)
+        form.addRow("Dashboard font size", self.font_size)
+        form.addRow("Source rotation", self.rotation_seconds)
+        form.addRow("Log lines per source", self.tail_lines)
+        form.addRow("Refresh interval", self.refresh_seconds)
+        form.addRow("Containers", self.containers)
+        form.addRow("Start in Dashboard view", self.dashboard_mode)
+        form.addRow("Show stopped containers", self.show_all_containers)
+        form.addRow("Show timestamps", self.show_timestamps)
+        form.addRow("Simplify log messages", self.simplify_messages)
+        return tab
+
+    def _weather_tab(self, config: holocron.Config) -> QWidget:
+        tab = QWidget(); form = self._form(); tab.setLayout(form)
+        self.weather_enabled = self._check(config.weather_enabled)
+        self.weather_location = QLineEdit(config.weather_location)
+        self.weather_location.setPlaceholderText("e.g. Burnie, Hobart, 7320")
+        self.weather_refresh_seconds = self._spin(config.weather_refresh_seconds, 60, 86400, " s")
+        self.speech_enabled = self._check(config.speech_enabled)
+        self.startup_phrase = QLineEdit(config.startup_phrase)
+        self.startup_audio = QLineEdit(config.startup_audio)
+        self.startup_audio.setPlaceholderText("Optional WAV or audio file")
+        form.addRow("Weather enabled", self.weather_enabled)
+        form.addRow("Weather location", self.weather_location)
+        form.addRow("Weather refresh", self.weather_refresh_seconds)
+        form.addRow("Startup speech", self.speech_enabled)
+        form.addRow("Startup phrase", self.startup_phrase)
+        form.addRow("Startup audio", self.startup_audio)
+        return tab
+
+    def _system_tab(self, config: holocron.Config) -> QWidget:
+        tab = QWidget(); form = self._form(); tab.setLayout(form)
+        self.journal_enabled = self._check(config.journal_enabled)
+        self.journal_tail_lines = self._spin(config.journal_tail_lines, 10, 5000, " lines")
+        self.journal_refresh_seconds = self._double(config.journal_refresh_seconds, 0.5, 60.0, " s")
+        self.journal_priority = QComboBox()
+        self.journal_priority.addItems(["debug", "info", "notice", "warning", "err"])
+        self.journal_priority.setCurrentText(config.journal_priority)
+        self.update_refresh_seconds = self._spin(config.update_refresh_seconds, 60, 86400, " s")
+        self.log_file = QLineEdit(config.log_file)
+        form.addRow("System journal", self.journal_enabled)
+        form.addRow("Journal lines", self.journal_tail_lines)
+        form.addRow("Journal refresh", self.journal_refresh_seconds)
+        form.addRow("Minimum journal priority", self.journal_priority)
+        form.addRow("APT update check", self.update_refresh_seconds)
+        form.addRow("Application log file", self.log_file)
+        hint = QLabel("The log file path takes effect after restarting Holocron.")
+        hint.setObjectName("settingsHint")
+        form.addRow("", hint)
+        return tab
+
+    def _updates_tab(self, config: holocron.Config) -> QWidget:
+        del config
+        tab = QWidget(); form = self._form(); tab.setLayout(form)
+        current = QLabel(f"Installed version: {holocron.VERSION}")
+        repository = QLabel(updater.REPOSITORY)
+        check = QPushButton("Check GitHub Releases")
+        check.clicked.connect(self.update_requested.emit)
+        hint = QLabel("Updates apply to this display client. The server agent must be updated separately.")
+        hint.setWordWrap(True); hint.setObjectName("settingsHint")
+        form.addRow("Current version", current)
+        form.addRow("Repository", repository)
+        form.addRow("Release check", check)
+        form.addRow("", hint)
+        return tab
+
+    def apply_to(self, config: holocron.Config) -> None:
+        config.title = self.title.text().strip() or config.title
+        config.gui_font_size = self.font_size.value()
+        config.rotation_seconds = self.rotation_seconds.value()
+        config.tail_lines = self.tail_lines.value()
+        config.refresh_seconds = self.refresh_seconds.value()
+        names = [name.strip() for name in self.containers.text().split(",") if name.strip()]
+        config.containers = names or None
+        config.dashboard_mode = self.dashboard_mode.isChecked()
+        config.show_all_containers = self.show_all_containers.isChecked()
+        config.show_timestamps = self.show_timestamps.isChecked()
+        config.simplify_messages = self.simplify_messages.isChecked()
+        config.weather_enabled = self.weather_enabled.isChecked()
+        config.weather_location = self.weather_location.text().strip()
+        config.weather_refresh_seconds = self.weather_refresh_seconds.value()
+        config.speech_enabled = self.speech_enabled.isChecked()
+        config.startup_phrase = self.startup_phrase.text()
+        config.startup_audio = self.startup_audio.text().strip()
+        config.journal_enabled = self.journal_enabled.isChecked()
+        config.journal_tail_lines = self.journal_tail_lines.value()
+        config.journal_refresh_seconds = self.journal_refresh_seconds.value()
+        config.journal_priority = self.journal_priority.currentText()
+        config.update_refresh_seconds = self.update_refresh_seconds.value()
+        config.log_file = self.log_file.text().strip() or config.log_file
+
+
+class UpdateDialog(QDialog):
+    """Check and install a published GitHub release for this display client."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Holocron Updates")
+        self.setModal(True)
+        self.setMinimumSize(760, 520)
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="holocron-update")
+        self.future: Future[object] | None = None
+        self.release: updater.ReleaseInfo | None = None
+        layout = QVBoxLayout(self)
+        title = QLabel("HOLOCRON RELEASE UPDATES")
+        title.setObjectName("settingsTitle"); title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        self.status = QLabel("Checking GitHub releases…")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.status)
+        self.details = QPlainTextEdit()
+        self.details.setReadOnly(True)
+        layout.addWidget(self.details, 1)
+        buttons = QHBoxLayout()
+        self.check_button = QPushButton("Check Again")
+        self.install_button = QPushButton("Download and Install")
+        self.install_button.setEnabled(False)
+        close_button = QPushButton("Close")
+        self.check_button.clicked.connect(self.check)
+        self.install_button.clicked.connect(self.install)
+        close_button.clicked.connect(self.reject)
+        buttons.addWidget(self.check_button); buttons.addWidget(self.install_button); buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+        self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(150)
+        self.check()
+
+    def check(self) -> None:
+        if self.future is not None and not self.future.done():
+            return
+        self.release = None
+        self.install_button.setEnabled(False)
+        self.check_button.setEnabled(False)
+        self.status.setText("Checking GitHub releases…")
+        self.future = self.executor.submit(updater.fetch_latest_release)
+
+    def install(self) -> None:
+        if self.release is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Install Holocron update?",
+            f"Download and install Holocron {self.release.tag_name} on this display client?\n\n"
+            "The system will ask for administrator permission. Restart Holocron after installation.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.install_button.setEnabled(False)
+        self.check_button.setEnabled(False)
+        self.status.setText(f"Installing {self.release.tag_name}…")
+        self.future = self.executor.submit(updater.install_release, self.release, "--client")
+
+    def poll(self) -> None:
+        if self.future is None or not self.future.done():
+            return
+        future, self.future = self.future, None
+        try:
+            result = future.result()
+            if isinstance(result, updater.ReleaseInfo):
+                self.release = result
+                current = f"v{holocron.VERSION}"
+                if updater.is_newer(result, holocron.VERSION):
+                    self.status.setText(f"Update available: {current} → {result.tag_name}")
+                    self.install_button.setEnabled(True)
+                else:
+                    self.status.setText(f"You are running the latest release ({current}).")
+                self.details.setPlainText(result.body or "No release notes were provided.")
+            else:
+                self.status.setText("Update installed. Restart Holocron to use it.")
+                self.details.setPlainText(str(result))
+        except Exception as exc:
+            self.status.setText("Update check failed")
+            self.details.setPlainText(str(exc))
+        self.check_button.setEnabled(True)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.timer.stop()
+        self.executor.shutdown(wait=False, cancel_futures=True)
+        super().closeEvent(event)
 
 
 class PortSummary(Panel):
@@ -589,17 +806,14 @@ class Dashboard(QMainWindow):
         )
 
     def show_settings(self) -> None:
-        dialog = SettingsDialog(
-            self.config.gui_font_size,
-            self.config.weather_location,
-            self,
-        )
+        dialog = SettingsDialog(self.config, self)
+        dialog.update_requested.connect(self.show_update_dialog)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         old_location = self.config.weather_location.strip()
-        self.config.gui_font_size = dialog.font_size.value()
-        self.config.weather_location = dialog.weather_location.text().strip()
+        old_weather_enabled = self.config.weather_enabled
+        dialog.apply_to(self.config)
         try:
             self.config.save(self.config_path)
         except OSError as exc:
@@ -607,10 +821,20 @@ class Dashboard(QMainWindow):
             return
 
         self._style()
-        if self.config.weather_location != old_location:
+        self.force_refresh = True
+        if self.config.weather_enabled and (
+            self.config.weather_location != old_location
+            or not old_weather_enabled
+        ):
             self.last_weather = 0.0
             self.refresh_weather()
+        elif not self.config.weather_enabled and self.weather_future is not None:
+            self.weather_future.cancel()
         self.connection.setText("SETTINGS SAVED")
+
+    def show_update_dialog(self) -> None:
+        dialog = UpdateDialog(self)
+        dialog.exec()
 
     def tick(self) -> None:
         if self.snapshot_future and self.snapshot_future.done():

@@ -16,6 +16,7 @@ from holocron import (
     package_update_count,
 )
 from holocron_agent import build_event_sources, merge_server_events, port_manager_status
+from updater import is_newer, parse_release, version_tuple
 
 
 class FakeWeatherResponse:
@@ -72,6 +73,17 @@ FORECAST_RESPONSE = {
 class LogFormattingTests(unittest.TestCase):
     def test_package_version(self):
         self.assertEqual(VERSION, "0.5.0")
+
+    def test_release_version_parsing(self):
+        self.assertEqual(version_tuple("v0.6.1"), (0, 6, 1))
+        release = parse_release({
+            "tag_name": "v0.6.0",
+            "name": "Dashboard update",
+            "body": "New settings",
+            "zipball_url": "https://api.github.com/repos/VoltageViper99/Holocron-Dashboard/zipball/v0.6.0",
+            "html_url": "https://github.com/VoltageViper99/Holocron-Dashboard/releases/tag/v0.6.0",
+        })
+        self.assertTrue(is_newer(release, VERSION))
 
     def test_port_manager_status_preserves_extensible_applications(self):
         with tempfile.TemporaryDirectory() as directory:

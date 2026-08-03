@@ -132,6 +132,23 @@ BatchMode=yes, so the display must authenticate without prompting.
 
 This mode also requires PySide6 to be importable by the system python3.
 
+## Updating from GitHub releases
+
+The Qt settings screen includes an **Updates** tab. It checks the latest
+published release at `github.com/VoltageViper99/Holocron-Dashboard`, shows its
+release notes, and can download and install it without manually reinstalling
+the project. The installer asks for administrator approval through `pkexec`
+or `sudo` and updates the local display client only.
+
+The server agent is deliberately not changed remotely by the display client.
+Update the server from a checked-out release archive with:
+
+    sudo ./install.sh --server
+
+Only published, semver-tagged releases such as `v0.6.0` are offered by the
+updater. A GitHub tag alone is not enough; create a GitHub Release with notes
+for it to appear in the settings screen. Restart Holocron after an update.
+
 ## Configuration
 
 The dashboard configuration is created at:
@@ -299,6 +316,7 @@ Check shell syntax:
     ui.py, ui_common.py                 Terminal dashboard implementation
     ui_menu.py, ui_settings.py          Terminal menus and settings
     gui.py                              PySide6 graphical dashboard
+    updater.py                          GitHub release checker and updater
     holocron_agent.py                   Server-side JSON collector
     install.sh                          Main server/client installer
     port-manager/                       Proton/qBittorrent service
