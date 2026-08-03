@@ -1,0 +1,45 @@
+# Python bytecode, test, and local environment artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+
+# Local credentials and configuration
+.env
+.env.*
+!.env.example
+config.json
+port-manager/port-manager.conf
+*.secret
+*.secrets
+.secrets/
+
+# Runtime logs and generated state
+*.log
+port-manager/logs/*
+!port-manager/logs/.gitkeep
+status.json
+events.jsonl
+*.json.tmp
+port-manager/status.json
+port-manager/events.jsonl
+
+# qBittorrent runtime/configuration data and authentication cookies
+*qbittorrent-cookie*
+qBittorrent/
+qBittorrent.conf
+BT_backup/
+*.cookie
+
+# Editor and OS metadata
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
