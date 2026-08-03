@@ -1,413 +1,304 @@
-# Holocron Dashboard v0.5.0
+# Holocron Dashboard
 
-Holocron now includes two interfaces:
+Holocron is a retro-green homelab dashboard for Docker services, host health,
+system events, and network activity. Version **0.5.0** provides two clients:
 
-- `holocron-gui`: the native Qt dashboard, designed specifically for a
-  wall-mounted 1920×1080 TV.
-- `holocron`: the original curses interface for ordinary terminals and SSH.
+- **holocron**: a terminal/curses dashboard for a local console, SSH session, or tmux pane.
+- **holocron-gui**: a native PySide6/Qt dashboard for a dedicated 1080p display.
 
-The graphical dashboard recreates the control-room design with five live
-metric cards, a full-width current-weather strip, Docker container matrix,
-rotating server event stream, network history graph, and keyboard command footer. The
-GUI runs on the display client under Cage; a small JSON agent runs on the
-server over SSH. No X11 or Wayland forwarding is used.
+The graphical client can run on a separate display machine. It collects a compact
+JSON snapshot from a server over non-interactive SSH, without X11 or Wayland
+forwarding.
 
-A lightweight, retro-green homelab dashboard with system information,
-Docker service health, and rotating live logs.
+The project also includes **Holocron Port Manager**, an independent Bash service
+that renews Proton VPN NAT-PMP mappings and synchronises the forwarded port with
+qBittorrent.
 
-It was built for a large terminal dashboard, tmux pane, spare monitor, or
-slightly diabolical Sony Bravia guarded by LEGO Yoda.
+## Architecture
+
+    Dedicated display                 Homelab server
+    +----------------------+           +----------------------+
+    | holocron-gui + Cage |--- SSH --> | holocron-agent       |
+    +----------------------+    JSON   | Docker + journalctl  |
+                                       | Port Manager         |
+                                       | Proton NAT-PMP       |
+                                       | qBittorrent Web API  |
+                                       +----------------------+
+
+The terminal client may run directly on the server and does not use the SSH
+agent path. Port Manager publishes its state at:
+
+    /var/lib/holocron/port-manager/status.json
 
 ## Features
 
-- Dashboard-first layout with system status across the top and live logs below.
-- TV-scale control-matrix layout with balanced upper and lower decks.
-- Automatically cycles through running Docker containers.
-- Shows running, healthy, unhealthy, and stopped container totals.
-- Displays a compact service-health grid.
-- Includes a full-screen Archives log view.
-- Displays recent logs and refreshes them continuously.
-- Rotates every 30 seconds through every running Docker container and the
-  server journal, with the current service name shown above the feed.
-- Formats logs into aligned timestamp, level, and message columns.
-- Highlights success, warning, error, and fatal events.
-- Removes ANSI control codes and noisy level prefixes.
-- Records Holocron actions in a separate application log.
-- Shows CPU, RAM, disk, live network usage, time, and rotation countdown.
-- Shows physical filesystem capacity, temperature sensors, and kernel details.
-- Shows a cached three-day local forecast in the system panel.
-- IBM-style green terminal presentation.
-- Optional startup announcement:
-  `Holocron started, it has.`
-- Keeps the server agent and terminal interface on the Python standard library.
-- Adds a native PySide6/Qt interface for the dedicated TV client.
-- Runs well inside tmux.
+### Terminal dashboard
 
-## Terminal/server requirements
+- Rotating Docker container and system-journal log sources.
+- Container counts and health states.
+- CPU, memory, disk, filesystem, temperature, uptime, and load metrics.
+- Live network throughput and system identity information.
+- Optional APT update counts, local weather, and startup speech.
+- Dashboard and full-screen Archives views.
+- Configurable container selection, refresh intervals, and log formatting.
+
+### Graphical dashboard
+
+- Large metric cards and a current-weather strip.
+- Docker service matrix and scrolling server event stream.
+- Network history graph and storage information.
+- Port Manager page with VPN, qBittorrent, and recent-event state.
+- Keyboard-friendly settings for display size and weather location.
+- Windowed mode for testing and Cage mode for kiosk-style deployment.
+
+### Port Manager
+
+The standalone service renews Proton VPN UDP/TCP NAT-PMP mappings, authenticates
+to qBittorrent's Web API, updates and verifies its listening port, writes a
+versioned status document, and records operational events.
+
+Credentials stay in /etc/holocron/port-manager.conf, installed with mode 0600.
+They are not written to the status JSON or service log.
+
+## Requirements
+
+### Common/server requirements
 
 - Linux
-- Python 3.10+
-- Docker CLI
-- Permission to run `docker ps` and `docker logs`
-- Optional: `espeak-ng` for synthesized startup speech
+- Python 3.10 or newer
+- Docker CLI and permission to run docker ps, docker stats, and docker logs
+- journalctl for host event collection
+- curl, jq, and natpmpc for Port Manager
+- Optional espeak-ng for startup speech
 
-The graphical display client additionally requires Cage, PySide6, Qt's Wayland
-plugin, OpenSSH, and preferably IBM Plex Mono.
+### Display-client requirements
 
-On Ubuntu:
+- Python 3.10 or newer
+- PySide6 6.7 or newer
+- Cage and Qt's Wayland plugin for kiosk mode
+- OpenSSH client with key-based authentication
+- Optional IBM Plex Mono or another monospace font
 
-```bash
-sudo apt update
-sudo apt install python3 espeak-ng
-```
+On Ubuntu, the server commonly needs:
 
-Your user may need Docker access:
+    sudo apt update
+    sudo apt install python3 curl jq natpmpc espeak-ng
 
-```bash
-sudo usermod -aG docker "$USER"
-```
+On an Arch Linux display client:
 
-Log out and back in after changing Docker group membership.
+    sudo pacman -S --needed cage pyside6 qt6-wayland openssh ttf-ibm-plex
 
-## Quick start
+## Installation
 
-```bash
-chmod +x holocron.py
-./holocron.py --init-config
-./holocron.py
-```
+Run the installer from the project directory.
 
-For a dedicated display that should skip the menu:
+### Server
 
-```bash
-./holocron.py --dashboard
-```
+    sudo ./install.sh --server
 
-Or:
+This installs the server agent and shared files at /opt/holocron, with
+launchers at /usr/local/bin/holocron and /usr/local/bin/holocron-agent.
 
-```bash
-python3 holocron.py
-```
+Allow the server user to read Docker and the system journal:
 
-The project keeps its application services in `holocron.py` and splits the
-curses interface by responsibility:
+    sudo usermod -aG docker,systemd-journal "$USER"
 
-- `ui.py` contains the dashboard controller and the stable UI entry points.
-- `ui_common.py` contains shared UI state, layout constants, and safe drawing
-  helpers.
-- `ui_menu.py` contains the main-menu flow.
-- `ui_settings.py` contains the settings-screen renderer.
+Log out and back in after changing group membership. Then create a configuration
+and start a local terminal dashboard:
 
-## Controls
+    holocron --init-config
+    holocron --dashboard
 
-- `A`: toggle Dashboard and Archives views
-- `N`: next container
-- `P`: previous container
-- `Space`: pause or resume rotation
-- `R`: refresh logs
-- `S`: replay startup announcement
-- `Q`: quit
+### Display client
+
+    sudo ./install.sh --client
+
+Configure SSH key authentication and verify the agent before starting the GUI:
+
+    ssh-copy-id USER@SERVER
+    ssh -T USER@SERVER /usr/local/bin/holocron-agent | python3 -m json.tool
+    holocron-gui --host USER@SERVER --windowed
+
+For a 1920x1080 kiosk display:
+
+    cage -- holocron-gui --host USER@SERVER
+
+Edit start-gui-example.sh to reuse a display launcher. The SSH command uses
+BatchMode=yes, so the display must authenticate without prompting.
+
+### Both roles on one machine
+
+    sudo ./install.sh --all
+
+This mode also requires PySide6 to be importable by the system python3.
 
 ## Configuration
 
-The default configuration is created at:
+The dashboard configuration is created at:
 
-```text
-~/.config/holocron/config.json
-```
+    ~/.config/holocron/config.json
 
-Example:
+Create it with --init-config, or use --config PATH to select another file.
+The safe example is config.example.json.
 
-```json
-{
-  "rotation_seconds": 15,
-  "tail_lines": 120,
-  "refresh_seconds": 1.0,
-  "containers": null,
-  "title": "JEDI ARCHIVES",
-  "startup_phrase": "Holocron started, it has.",
-  "startup_audio": "",
-  "speech_enabled": true,
-  "show_timestamps": true,
-  "log_file": "~/.local/state/holocron/holocron.log",
-  "simplify_messages": true,
-  "dashboard_mode": true,
-  "show_all_containers": true,
-  "weather_enabled": true,
-  "weather_location": "",
-  "weather_refresh_seconds": 900,
-  "gui_font_size": 16,
-  "update_refresh_seconds": 900,
-  "journal_enabled": true,
-  "journal_tail_lines": 100,
-  "journal_refresh_seconds": 2.0,
-  "journal_priority": "info"
-}
-```
+Important settings include:
 
-To show only selected containers:
+- rotation_seconds, tail_lines, and refresh_seconds for collection and rotation.
+- containers to restrict the dashboard to selected Docker names.
+- dashboard_mode and show_all_containers for the initial view and service list.
+- weather_enabled, weather_location, and weather_refresh_seconds.
+- journal_enabled, journal_tail_lines, and journal_priority.
+- log_file for Holocron's local application log.
+- gui_font_size for the Qt display.
+- speech_enabled, startup_phrase, and startup_audio.
 
-```json
-"containers": [
-  "immich_server",
-  "adguardhome",
-  "slskd"
-]
-```
+Example container selection:
 
-The names must match `docker ps --format '{{.Names}}'`.
+    "containers": ["immich_server", "adguardhome", "slskd"]
 
-### Local weather
+Leave weather_location empty for automatic detection, or set a city, postcode,
+or airport code. Weather is fetched asynchronously and cached. The GUI's S
+settings screen can update the display size and weather location.
 
-Weather forecasts are fetched asynchronously from [wttr.in](https://github.com/chubin/wttr.in)
-and cached, so they do not block dashboard refreshes. Leave `weather_location`
-empty to use IP-based location detection, or set a city, postcode, or airport
-code:
+## Command-line options
 
-```json
-"weather_location": "Burnie"
-```
+    holocron --init-config       Create the default config and exit
+    holocron --dashboard         Open the live dashboard without the menu
+    holocron --no-speech         Disable startup speech for this run
+    holocron --config PATH       Use a specific dashboard config
+    holocron --version           Print the application version
 
-Set `weather_enabled` to `false` to disable the network request and hide
-the forecast from the system panel. `weather_refresh_seconds` controls the cache interval
-and has a minimum of 60 seconds.
+The agent accepts --config PATH and prints one compact JSON snapshot:
 
-### Graphical settings
+    holocron-agent --config ~/.config/holocron/config.json | python3 -m json.tool
 
-Press `S` in the graphical dashboard to open the TV-friendly settings menu.
-The menu changes the dashboard font size and weather location. Choose **Save**
-to apply the font immediately, fetch the new location immediately, and write
-the choices to `~/.config/holocron/config.json` for future Cage launches.
-Press `R` to refresh both server data and weather immediately.
+The GUI accepts --host USER@SERVER, --agent-command COMMAND, --config PATH,
+and --windowed.
 
+## Controls
 
-## Dashboard layout
+### Terminal client
 
-Holocron now starts in a dashboard view designed for a dedicated homelab
-monitor. The upper section stays calm and readable while the lower section
-scans through live Docker and server journal sources every 30 seconds.
+| Key | Action |
+| --- | --- |
+| A | Toggle Dashboard and Archives views |
+| N / P | Next / previous container or source |
+| Space | Pause or resume rotation |
+| R | Refresh logs |
+| S | Replay the startup announcement |
+| Q | Quit |
 
-The dashboard includes:
+### Graphical client
 
-- CPU, RAM, disk, temperature, load average, and uptime
-- Threshold alerts for CPU, RAM, disk space, and temperature
-- Pending Ubuntu package update count (APT)
-- Docker totals and container health
-- A service grid for quick fault spotting
-- Active log source, rotation state, and countdown
-- One fixed scrolling feed rotating through every running Docker service and
-  the server `journalctl` stream every 30 seconds
-- A prominent current-service name, source position, and next-source countdown
-- A storage matrix for `/`, `/home`, `/srv`, `/mnt`, and `/media` mounts
+| Key | Action |
+| --- | --- |
+| S | Open settings |
+| P | Open Port Manager |
+| D | Return to Dashboard |
+| Space | Pause or resume collection |
+| R | Request an immediate snapshot |
+| F11 | Toggle full screen |
+| Q / Escape | Quit |
 
-Press `A` to switch to the full-screen **Archives** log view. Set
-`dashboard_mode` to `false` if you prefer Archives as the startup view. Set
-`show_all_containers` to `false` to hide stopped containers from the service
-grid.
+## Port Manager setup
 
-Those character dimensions apply only to the legacy terminal view. The native
-GUI is laid out for the TV's 1920×1080 pixel output.
+Install the service on the server:
 
-### Dedicated 1080p TV client with Cage and Qt
+    sudo apt install curl jq natpmpc
+    cd port-manager
+    sudo ./install.sh
 
-On the Ubuntu server, install the collector and ensure the SSH user can read
-Docker and system journal data:
+The installer creates /etc/holocron/port-manager.conf only if it does not
+already exist. Edit it and set the qBittorrent Web UI values:
 
-```bash
-sudo ./install.sh --server
-sudo usermod -aG docker,systemd-journal "$USER"
-holocron-agent | python3 -m json.tool
-```
+    sudoedit /etc/holocron/port-manager.conf
 
-Log out and back in after changing groups. The last command should print one
-JSON snapshot.
+At minimum:
 
-On the Arch display client:
+    QBITTORRENT_URL="http://127.0.0.1:9091"
+    QBITTORRENT_USERNAME="your-user"
+    QBITTORRENT_PASSWORD="your-password"
 
-```bash
-sudo pacman -S --needed cage pyside6 qt6-wayland openssh ttf-ibm-plex
-sudo ./install.sh --client
-ssh-copy-id tj@jedi-archives
-cage -- holocron-gui --host tj@jedi-archives
-```
+The file remains root-owned with mode 0600. Disable qBittorrent's UPnP/NAT-PMP
+setting so it does not compete with the Proton mapping, then enable the service:
 
-Replace `tj@jedi-archives` with the correct SSH destination. Key authentication
-is required for unattended use. Foot is not involved in the graphical launch.
-The GUI targets 1920×1080 directly and scales with Qt if the output differs.
+    sudo systemctl enable --now holocron-port-manager
+    systemctl status holocron-port-manager
 
-## Holocron Port Manager
+Inspect the public status and service log:
 
-v0.5.0 includes a standalone Bash service under `port-manager/`. It maintains
-Proton VPN NAT-PMP UDP and TCP mappings every 45 seconds, updates only
-qBittorrent through its authenticated Web API, reads the preference back to
-verify the new listening port, and records its work in a log.
+    jq . /var/lib/holocron/port-manager/status.json
+    tail -f /var/log/holocron/port-manager/port-manager.log
 
-The service does not import or call dashboard code. Its only public contract is:
+The status document contains service, provider, application, and recent-event
+information. It does not contain the qBittorrent username or password.
 
-```text
-/var/lib/holocron/port-manager/status.json
-```
+## Logs and runtime data
 
-The server agent reads that JSON and the graphical dashboard displays it on a
-separate page. The JSON contains a generic `applications` array, so future
-managed applications appear as new rows without qBittorrent-specific dashboard
-changes.
+Holocron's local application log defaults to:
 
-Install on the Ubuntu server:
+    ~/.local/state/holocron/holocron.log
 
-```bash
-sudo apt install curl jq natpmpc
-sudo bash install.sh --server
-cd port-manager
-sudo bash install.sh
-sudoedit /etc/holocron/port-manager.conf
-sudo systemctl enable --now holocron-port-manager
-```
+Port Manager writes runtime data outside the repository:
 
-Set the existing qBittorrent Web UI URL, username, and password in the config.
-The config is installed with mode `0600`; credentials are never exposed in the
-status JSON or log. qBittorrent's own UPnP/NAT-PMP option should be disabled so
-it does not compete with the managed Proton mapping.
+    /var/lib/holocron/port-manager/status.json
+    /var/log/holocron/port-manager/port-manager.log
+    /run/holocron-port-manager/
 
-Verify the service and public state:
+Runtime logs, generated status/events files, local credentials, cookies, and
+qBittorrent configuration data are excluded by .gitignore. Only example
+configuration files belong in source control.
 
-```bash
-systemctl status holocron-port-manager
-jq . /var/lib/holocron/port-manager/status.json
-tail -f /var/log/holocron/port-manager/port-manager.log
-```
+## Startup audio
 
-Update the display client with `sudo bash install.sh --client`. Its existing
-Cage launch command does not change.
+To use a local recording:
 
-Verify the complete remote data path from the display client with:
+    "startup_audio": "/home/your-user/.local/share/holocron/startup.wav"
 
-```bash
-ssh -T tj@jedi-archives /usr/local/bin/holocron-agent | python3 -m json.tool
-```
-
-If that command does not print a JSON object, fix the reported SSH or server
-agent error before starting Cage.
-
-To test it without taking over the display:
-
-```bash
-holocron-gui --host tj@jedi-archives --windowed
-```
-
-The equivalent reusable launcher is `start-gui-example.sh`.
-
-Graphical controls:
-
-- `P`: open Port Manager
-- `D`: return to Dashboard
-- `Space`: pause or resume data collection
-- `R`: request an immediate snapshot
-- `F11`: toggle full screen
-- `Q` or `Escape`: quit
-
-The event stream is collected entirely on the Ubuntu server and never includes
-logs from the display client. Each running Docker container is shown separately,
-followed by the server system journal. It uses the server user's journal permissions. If
-it only shows a limited selection on Ubuntu, add the server user to `systemd-journal`
-and log out and back in:
-
-```bash
-sudo usermod -aG systemd-journal "$USER"
-```
-
-## Log presentation
-
-Docker output is displayed in a consistent format:
-
-```text
-22:14:03 │ INFO    │ Configuration loaded
-22:14:04 │ SUCCESS │ Service listening on port 8080
-22:14:05 │ WARN    │ Retrying database connection
-22:14:06 │ ERROR   │ Connection refused
-```
-
-Set `simplify_messages` to `false` to preserve original prefixes and spacing.
-Docker log timestamps are shortened to `HH:MM:SS` for readability.
-
-Holocron's own actions, such as container rotation, pause/resume, manual refresh,
-and shutdown, are written to:
-
-```text
-~/.local/state/holocron/holocron.log
-```
-
-The path can be changed with `log_file`.
-
-## Using your own voice recording
-
-Record your own line and set:
-
-```json
-"startup_audio": "/home/your-user/.local/share/holocron/startup.wav"
-```
-
-Holocron tries `ffplay`, `mpv`, `paplay`, and `aplay`, in that order.
-When a valid audio file is configured, it is preferred over text-to-speech.
-
-The included synthesized speech is deliberately generic rather than an
-imitation of any actor or character voice.
+Holocron tries ffplay, mpv, paplay, and aplay, then falls back to espeak-ng.
+Set speech_enabled to false, or pass --no-speech, to disable announcements.
 
 ## tmux
 
-Run Holocron inside a tmux pane:
+The included example creates a two-pane dashboard session:
 
-```bash
-tmux new-window -n holocron '/opt/holocron/holocron.py'
-```
+    ./start-dashboard-example.sh
+    tmux attach -t dashboard
 
-Or add this command to your existing dashboard startup script:
+It starts btop beside holocron --dashboard. Edit the script if your tmux layout
+or command names differ.
 
-```bash
-tmux send-keys -t dashboard:0.2 '/opt/holocron/holocron.py' C-m
-```
+## Development and tests
 
-Adjust the target pane to match your layout.
+The terminal client and server agent use only the Python standard library.
+PySide6 is required for the graphical client and is listed in requirements.txt.
 
-## Install system-wide
+Run the automated tests:
 
-```bash
-sudo ./install.sh
-holocron --init-config
-holocron
-```
+    python3 -m unittest discover -v
+    bash port-manager/tests/test_modules.sh
 
-This installs the executable to `/opt/holocron/holocron.py` and creates
-`/usr/local/bin/holocron`.
+Check shell syntax:
 
-## Troubleshooting
+    bash -n install.sh port-manager/*.sh port-manager/lib/*.sh
+    bash -n port-manager/providers/*.sh port-manager/applications/*.sh
 
-### Permission denied when accessing Docker
+## Repository layout
 
-Check:
+    holocron.py                         Shared services and terminal entry point
+    ui.py, ui_common.py                 Terminal dashboard implementation
+    ui_menu.py, ui_settings.py          Terminal menus and settings
+    gui.py                              PySide6 graphical dashboard
+    holocron_agent.py                   Server-side JSON collector
+    install.sh                          Main server/client installer
+    port-manager/                       Proton/qBittorrent service
+    config.example.json                 Safe dashboard config example
+    port-manager/port-manager.conf.example
+                                        Safe Port Manager config example
+    test_holocron.py, test_ui.py        Python tests
+    port-manager/tests/                 Port Manager module tests
 
-```bash
-docker ps
-```
+## License
 
-If that fails, fix Docker permissions before running Holocron.
-
-### No startup speech
-
-Check:
-
-```bash
-command -v espeak-ng
-```
-
-Then test:
-
-```bash
-espeak-ng "Holocron started, it has."
-```
-
-### Garbled terminal
-
-Use a UTF-8 locale and a terminal with Unicode support. Resize the terminal to
-at least 50 columns by 10 rows.
-# Holocron-Dashboard
+No license file is currently included. Add a license before redistributing the
+project or incorporating it into another project.
