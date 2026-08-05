@@ -72,7 +72,7 @@ FORECAST_RESPONSE = {
 
 class LogFormattingTests(unittest.TestCase):
     def test_package_version(self):
-        self.assertEqual(VERSION, "0.6.0")
+        self.assertEqual(VERSION, "0.7.0")
 
     def test_release_version_parsing(self):
         self.assertEqual(version_tuple("v0.6.1"), (0, 6, 1))

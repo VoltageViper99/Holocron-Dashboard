@@ -1,7 +1,7 @@
 # Holocron Dashboard
 
 Holocron is a retro-green homelab dashboard for Docker services, host health,
-system events, and network activity. Version **0.6.0** provides two clients:
+system events, and network activity. Version **0.7.0** provides two clients:
 
 - **holocron**: a terminal/curses dashboard for a local console, SSH session, or tmux pane.
 - **holocron-gui**: a native PySide6/Qt dashboard for a dedicated 1080p display.

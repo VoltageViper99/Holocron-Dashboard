@@ -29,7 +29,7 @@ from urllib.request import Request, urlopen
 
 
 APP_NAME = "HOLOCRON"
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "holocron" / "config.json"
 
 
