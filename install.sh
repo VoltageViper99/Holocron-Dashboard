@@ -10,7 +10,6 @@ REQUIRED_FILES=(
   holocron.py
   holocron_agent.py
   gui.py
-  updater.py
   ui.py
   ui_common.py
   ui_menu.py
@@ -42,7 +41,6 @@ install -d -m 0755 "$INSTALL_DIR"
 install -m 0755 "$SOURCE_DIR/holocron.py" "$INSTALL_DIR/holocron.py"
 install -m 0755 "$SOURCE_DIR/holocron_agent.py" "$INSTALL_DIR/holocron_agent.py"
 install -m 0755 "$SOURCE_DIR/gui.py" "$INSTALL_DIR/gui.py"
-install -m 0644 "$SOURCE_DIR/updater.py" "$INSTALL_DIR/updater.py"
 install -m 0644 \
   "$SOURCE_DIR/ui.py" \
   "$SOURCE_DIR/ui_common.py" \

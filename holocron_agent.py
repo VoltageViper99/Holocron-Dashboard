@@ -140,6 +140,7 @@ def _container_stats(client: holocron.DockerClient) -> dict[str, dict[str, str]]
                 stats[name] = {
                     "cpu": row.get("CPUPerc", "—"),
                     "memory": row.get("MemUsage", "—").split(" / ", 1)[0],
+                    "mem_percent": row.get("MemPerc", "—"),
                 }
     return stats
 
@@ -185,7 +186,7 @@ def collect(config: holocron.Config) -> dict[str, object]:
         stats = _container_stats(docker)
         for state in states:
             row = asdict(state)
-            row.update(stats.get(state.name, {"cpu": "—", "memory": "—"}))
+            row.update(stats.get(state.name, {"cpu": "—", "memory": "—", "mem_percent": "—"}))
             containers.append(row)
         running = [state.name for state in states if state.running]
         tail_per_container = max(13, min(60, config.tail_lines))

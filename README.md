@@ -44,12 +44,15 @@ agent path. Port Manager publishes its state at:
 
 ### Graphical dashboard
 
-- Large metric cards and a current-weather strip.
-- Docker service matrix and scrolling server event stream.
+- Large metric cards (CPU, RAM, disk, network, uptime) with a current-weather strip.
+- CPU and memory readouts turn amber at 70% and red at 90%, on both the system
+  metric cards and each service card.
+- A grid of per-service status cards (Immich, Navidrome, qBittorrent, slskd,
+  Lidarr, Prowlarr, FlareSolverr, AdGuard Home, Gluetun, Portainer, Uptime
+  Kuma, Dozzle) showing live health, CPU, and memory.
 - Network history graph and storage information.
-- Port Manager page with VPN, qBittorrent, and recent-event state.
-- Keyboard-friendly settings for dashboard, weather, audio, journal, theme, and cursor behaviour.
-- Curated colour themes, custom colour swatches, and fullscreen cursor hiding.
+- All configuration, including weather and theme colours, is done by editing
+  the config file directly — there is no in-app settings screen.
 - Windowed mode for testing and Cage mode for kiosk-style deployment.
 
 ### Port Manager
@@ -133,22 +136,19 @@ BatchMode=yes, so the display must authenticate without prompting.
 
 This mode also requires PySide6 to be importable by the system python3.
 
-## Updating from GitHub releases
+## Updating
 
-The Qt settings screen includes an **Updates** tab. It checks the latest
-published release at `github.com/VoltageViper99/Holocron-Dashboard`, shows its
-release notes, and can download and install it without manually reinstalling
-the project. The installer asks for administrator approval through `pkexec`
-or `sudo` and updates the local display client only.
+The graphical dashboard has no in-app update checker. To update the display
+client, replace `/opt/holocron/gui.py` (and any other changed files) with a
+newer checked-out copy, or re-run:
 
-The server agent is deliberately not changed remotely by the display client.
-Update the server from a checked-out release archive with:
+    sudo ./install.sh --client
+
+Update the server the same way, from a checked-out release archive:
 
     sudo ./install.sh --server
 
-Only published, semver-tagged releases such as `v0.6.0` are offered by the
-updater. A GitHub tag alone is not enough; create a GitHub Release with notes
-for it to appear in the settings screen. Restart Holocron after an update.
+Restart Holocron after an update.
 
 ## Configuration
 
@@ -185,11 +185,11 @@ Example container selection:
     "containers": ["immich_server", "adguardhome", "slskd"]
 
 Leave weather_location empty for automatic detection, or set a city, postcode,
-or airport code. Weather is fetched asynchronously and cached. The GUI's S
-settings screen can update the display, monitoring, weather, audio, theme, and
-cursor behaviour. Theme presets include Holocron Green, Amber Terminal, Ice
-Blue, and Monochrome; each colour can also be changed with a swatch picker.
-The cursor can be hidden after a configurable period of fullscreen inactivity.
+or airport code. Weather is fetched asynchronously and cached. All of this,
+along with theme colours (theme_background, theme_panel, theme_primary,
+theme_dim, theme_warning, theme_error) and cursor_hide_enabled /
+cursor_hide_seconds, is configured by editing the config file directly and
+restarting Holocron — the graphical dashboard has no settings screen.
 
 ## Command-line options
 
@@ -223,9 +223,6 @@ and --windowed.
 
 | Key | Action |
 | --- | --- |
-| S | Open settings |
-| P | Open Port Manager |
-| D | Return to Dashboard |
 | Space | Pause or resume collection |
 | R | Request an immediate snapshot |
 | F11 | Toggle full screen |
@@ -320,7 +317,7 @@ Check shell syntax:
     ui.py, ui_common.py                 Terminal dashboard implementation
     ui_menu.py, ui_settings.py          Terminal menus and settings
     gui.py                              PySide6 graphical dashboard
-    updater.py                          GitHub release checker and updater
+    updater.py                          GitHub release helpers (unused by gui.py; kept for tests)
     holocron_agent.py                   Server-side JSON collector
     install.sh                          Main server/client installer
     port-manager/                       Proton/qBittorrent service
