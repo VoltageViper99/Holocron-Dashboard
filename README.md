@@ -162,7 +162,9 @@ The safe example is config.example.json.
 Important settings include:
 
 - rotation_seconds, tail_lines, and refresh_seconds for collection and rotation.
-- containers to restrict the dashboard to selected Docker names.
+- containers to restrict the **terminal** dashboard's log/status rotation to
+  selected Docker names. The graphical dashboard's service cards are a fixed
+  list defined in gui.py (SERVICE_WIDGETS), not config-driven.
 - dashboard_mode and show_all_containers for the initial view and service list.
 - weather_enabled, weather_location, and weather_refresh_seconds.
 - journal_enabled, journal_tail_lines, and journal_priority.
