@@ -171,8 +171,16 @@ class HolocronUI:
         last_fetch = self.state.last_weather_fetch
         if last_fetch is None or now - last_fetch >= refresh_seconds:
             self.weather_future = self.weather_executor.submit(
-                self.weather_client.forecast
+                self._fetch_forecast_lines
             )
+
+    def _fetch_forecast_lines(self) -> list[str]:
+        """Format the client's today+3-day forecast as compact display lines."""
+        weather = self.weather_client.fetch()
+        return [
+            f"{day['label']:<5} {day['condition']:<14.14} {day['low']}–{day['high']}°C"
+            for day in weather["days"]
+        ]
 
     def _refresh_update_count(self, now: float) -> None:
         if self.update_future is not None:
@@ -686,22 +694,22 @@ class HolocronUI:
         panel_right: int,
         panel_bottom: int,
     ) -> None:
-        """Draw the three-day forecast at the system panel's bottom right."""
+        """Draw today plus the 3-day forecast at the system panel's bottom right."""
         if not self.config.weather_enabled:
             return
 
         width = max(1, panel_right - x - 1)
-        heading_row = panel_bottom - 4
+        heading_row = panel_bottom - 5
         safe_addstr(
             self.screen,
             heading_row,
             x,
-            "3 DAY FORECAST",
+            "TODAY + 3 DAY FORECAST",
             curses.A_BOLD | curses.color_pair(6),
             max_width=width,
         )
         for row, forecast in enumerate(
-            self.state.weather_forecast[:3],
+            self.state.weather_forecast[:4],
             start=heading_row + 1,
         ):
             if row >= panel_bottom:

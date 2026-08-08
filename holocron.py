@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
@@ -335,72 +335,124 @@ class JournalClient:
         return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+WMO_CODE_TEXT: dict[int, str] = {
+    0: "Clear",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Fog",
+    51: "Light drizzle",
+    53: "Drizzle",
+    55: "Dense drizzle",
+    56: "Freezing drizzle",
+    57: "Freezing drizzle",
+    61: "Light rain",
+    63: "Rain",
+    65: "Heavy rain",
+    66: "Freezing rain",
+    67: "Freezing rain",
+    71: "Light snow",
+    73: "Snow",
+    75: "Heavy snow",
+    77: "Snow grains",
+    80: "Rain showers",
+    81: "Rain showers",
+    82: "Violent rain showers",
+    85: "Snow showers",
+    86: "Snow showers",
+    95: "Storm",
+    96: "Storm with hail",
+    99: "Storm with hail",
+}
+
+
 class WeatherClient:
-    """Fetch a compact three-day forecast from wttr.in."""
+    """Fetch current conditions and a 4-day forecast from Open-Meteo."""
 
     def __init__(self, location: str = "") -> None:
         self.location = location.strip()
+        self._geocode: dict[str, object] | None = None
 
-    def forecast(self) -> list[str]:
-        payload = self._payload()
-
-        days = payload.get("weather", [])[:3]
-        if not days:
-            raise RuntimeError("Weather service returned no forecast")
-
-        forecast: list[str] = []
-        for day in days:
-            date = datetime.strptime(day["date"], "%Y-%m-%d")
-            hourly = day.get("hourly", [])
-            midday = hourly[min(4, len(hourly) - 1)] if hourly else {}
-            descriptions = midday.get("weatherDesc", [])
-            description = descriptions[0].get("value", "") if descriptions else ""
-            condition = re.sub(r"\s+", " ", description).strip() or "Unknown"
-            low = day.get("mintempC", "?")
-            high = day.get("maxtempC", "?")
-            forecast.append(
-                f"{date.strftime('%a').upper():<3} "
-                f"{condition:<14.14} {low}–{high}°C"
-            )
-        return forecast
-
-    def _payload(self) -> dict[str, object]:
-        location = quote(self.location, safe="")
-        url = f"https://wttr.in/{location}?format=j1&m"
-        request = Request(
-            url,
-            headers={"User-Agent": f"Holocron/{VERSION}"},
-        )
+    @staticmethod
+    def _get_json(url: str) -> dict[str, object]:
+        request = Request(url, headers={"User-Agent": f"Holocron/{VERSION}"})
         with urlopen(request, timeout=5.0) as response:
             return json.load(response)
 
-    def conditions(self) -> dict[str, str]:
-        """Return the current conditions used by the graphical weather strip."""
-        payload = self._payload()
-        current = (payload.get("current_condition") or [{}])[0]
-        nearest = (payload.get("nearest_area") or [{}])[0]
-        today = (payload.get("weather") or [{}])[0]
-        astronomy = (today.get("astronomy") or [{}])[0]
+    def _resolve_location(self) -> dict[str, object]:
+        if self._geocode is not None:
+            return self._geocode
+        params = urlencode({"name": self.location, "count": 1})
+        payload = self._get_json(
+            f"https://geocoding-api.open-meteo.com/v1/search?{params}"
+        )
+        results = payload.get("results") or []
+        if not results:
+            raise RuntimeError(f"Could not find location: {self.location!r}")
+        self._geocode = results[0]
+        return self._geocode
 
-        def text(items: object, fallback: str = "—") -> str:
-            if isinstance(items, list) and items and isinstance(items[0], dict):
-                return str(items[0].get("value", fallback))
-            return fallback
+    @staticmethod
+    def _condition(code: object) -> str:
+        try:
+            return WMO_CODE_TEXT.get(int(code), "Unknown")
+        except (TypeError, ValueError):
+            return "Unknown"
 
-        place = text(nearest.get("areaName"), self.location or "Local weather")
-        region = text(nearest.get("region"), "")
+    def fetch(self) -> dict[str, object]:
+        """Return current conditions plus a 4-day (today + 3) forecast."""
+        place_info = self._resolve_location()
+        lat, lon = place_info["latitude"], place_info["longitude"]
+        params = urlencode(
+            {
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m,"
+                "apparent_temperature,wind_speed_10m,visibility,weather_code",
+                "daily": "weather_code,temperature_2m_max,temperature_2m_min",
+                "timezone": "auto",
+                "forecast_days": 4,
+            }
+        )
+        payload = self._get_json(f"https://api.open-meteo.com/v1/forecast?{params}")
+        current = payload.get("current") or {}
+        daily = payload.get("daily") or {}
+
+        place = str(place_info.get("name", self.location or "Local weather"))
+        region = str(place_info.get("admin1", ""))
         if region and region.lower() not in place.lower():
             place = f"{place}, {region}"
+
+        dates = daily.get("time") or []
+        codes = daily.get("weather_code") or []
+        lows = daily.get("temperature_2m_min") or []
+        highs = daily.get("temperature_2m_max") or []
+        days: list[dict[str, str]] = []
+        for index, date_str in enumerate(dates):
+            date = datetime.strptime(date_str, "%Y-%m-%d")
+            label = "TODAY" if index == 0 else date.strftime("%a").upper()
+            days.append(
+                {
+                    "label": label,
+                    "condition": self._condition(codes[index]) if index < len(codes) else "Unknown",
+                    "low": str(lows[index]) if index < len(lows) else "?",
+                    "high": str(highs[index]) if index < len(highs) else "?",
+                }
+            )
+
+        visibility_m = current.get("visibility")
+        visibility_km = round(visibility_m / 1000) if isinstance(visibility_m, (int, float)) else "—"
+
         return {
             "place": place,
-            "condition": text(current.get("weatherDesc"), "Unknown"),
-            "temp": str(current.get("temp_C", "—")),
-            "feels": str(current.get("FeelsLikeC", "—")),
-            "wind": str(current.get("windspeedKmph", "—")),
-            "humidity": str(current.get("humidity", "—")),
-            "visibility": str(current.get("visibility", "—")),
-            "sunrise": str(astronomy.get("sunrise", "—")),
-            "sunset": str(astronomy.get("sunset", "—")),
+            "condition": self._condition(current.get("weather_code")),
+            "temp": str(current.get("temperature_2m", "—")),
+            "feels": str(current.get("apparent_temperature", "—")),
+            "wind": str(current.get("wind_speed_10m", "—")),
+            "humidity": str(current.get("relative_humidity_2m", "—")),
+            "visibility": str(visibility_km),
+            "days": days,
         }
 
 

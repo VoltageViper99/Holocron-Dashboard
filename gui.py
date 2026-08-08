@@ -8,7 +8,6 @@ import json
 import subprocess
 import sys
 import time
-from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
@@ -16,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     from PySide6.QtCore import QEvent, QTimer, Qt, QRectF, QPointF
-    from PySide6.QtGui import QColor, QCursor, QPainter, QPen, QPolygonF
+    from PySide6.QtGui import QColor, QCursor, QPainter, QPen
     from PySide6.QtWidgets import (
         QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel,
         QMainWindow, QProgressBar, QVBoxLayout, QWidget,
@@ -203,32 +202,57 @@ class WeatherGlyph(QWidget):
         p.end()
 
 
+class ForecastTile(QWidget):
+    """One day of the forecast strip; the first tile is styled as 'today'."""
+
+    def __init__(self, today: bool = False) -> None:
+        super().__init__()
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0); column.setSpacing(2)
+        self.label = QLabel("—"); self.label.setObjectName("forecastLabel" if not today else "forecastLabelToday")
+        self.condition = QLabel("—"); self.condition.setObjectName("forecastCondition")
+        self.range = QLabel("—"); self.range.setObjectName("forecastRange")
+        for widget in (self.label, self.condition, self.range):
+            widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            column.addWidget(widget)
+
+    def set_day(self, day: dict[str, str]) -> None:
+        self.label.setText(day.get("label", "—"))
+        self.condition.setText(day.get("condition", "—"))
+        self.range.setText(f"{day.get('low', '?')}–{day.get('high', '?')}°C")
+
+
 class WeatherBar(Panel):
     def __init__(self) -> None:
         super().__init__()
         row = QHBoxLayout(); row.setSpacing(48)
         self.icon = WeatherGlyph()
-        self.place = QLabel("BURNIE, AUSTRALIA\nLoading weather…")
+        self.place = QLabel("Loading weather…")
         self.place.setObjectName("weatherText")
         self.temp = QLabel("—°C"); self.temp.setObjectName("weatherTemp")
         self.detail = QLabel("Wind: —\nHumidity: —\nVisibility: —")
-        self.sun = QLabel("Sunrise: —\nSunset: —")
-        for widget in (self.icon, self.place, self.temp, self.detail, self.sun):
+        for widget in (self.icon, self.place, self.temp, self.detail):
             row.addWidget(widget)
         row.setStretch(0, 0); row.setStretch(1, 3); row.setStretch(2, 2)
-        row.setStretch(3, 2); row.setStretch(4, 2)
+        row.setStretch(3, 2)
         self.layout.addLayout(row)
 
-    def set_weather(self, weather: dict[str, str]) -> None:
-        condition = weather.get("condition", "Unavailable")
+        forecast_row = QHBoxLayout(); forecast_row.setSpacing(24)
+        self.forecast_tiles = [ForecastTile(today=(i == 0)) for i in range(4)]
+        for tile in self.forecast_tiles:
+            forecast_row.addWidget(tile)
+        self.layout.addLayout(forecast_row)
+
+    def set_weather(self, weather: dict[str, object]) -> None:
+        condition = str(weather.get("condition", "Unavailable"))
         self.icon.set_condition(condition)
-        self.place.setText(
-            f"{weather.get('place', 'BURNIE, AUSTRALIA').upper()}\n{condition}"
-        )
+        self.place.setText(f"{weather.get('place', 'Local weather')}\n{condition}")
         self.temp.setText(f"{weather.get('temp', '—')}°C<br><small>Feels like {weather.get('feels', '—')}°C</small>")
         self.temp.setTextFormat(Qt.TextFormat.RichText)
         self.detail.setText(f"Wind: {weather.get('wind', '—')} km/h\nHumidity: {weather.get('humidity', '—')}%\nVisibility: {weather.get('visibility', '—')} km")
-        self.sun.setText(f"Sunrise: {weather.get('sunrise', '—')}\nSunset: {weather.get('sunset', '—')}")
+        days = weather.get("days") or []
+        for tile, day in zip(self.forecast_tiles, days):
+            tile.set_day(day)
 
     def set_loading(self, location: str) -> None:
         """Make a location change visible while its fresh data is fetched."""
@@ -301,39 +325,6 @@ class ServiceGrid(QWidget):
             card.set_state(match) if match else card.set_offline()
 
 
-class NetworkGraph(QWidget):
-    def __init__(self) -> None:
-        super().__init__(); self.values: deque[float] = deque([0.0] * 80, maxlen=80)
-        self.setMinimumHeight(90)
-
-    def add_value(self, value: float) -> None:
-        self.values.append(max(0.0, value)); self.update()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        del event
-        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(BLACK)); p.setPen(QPen(QColor(DIM), 1)); p.drawRect(self.rect().adjusted(0, 0, -1, -1))
-        vals = list(self.values); peak = max(max(vals), 1.0); w = max(1, self.width() - 10); h = max(1, self.height() - 12)
-        points = [QPointF(5 + i * w / (len(vals) - 1), 6 + h * (1 - value / peak)) for i, value in enumerate(vals)]
-        p.setPen(QPen(QColor(GREEN), 2)); p.drawPolyline(QPolygonF(points)); p.end()
-
-
-class NetworkPanel(Panel):
-    def __init__(self) -> None:
-        super().__init__("NETWORK STATISTICS")
-        row = QHBoxLayout(); row.setSpacing(24)
-        self.totals = QLabel("Total Received: —\nTotal Transmitted: —")
-        self.graph = NetworkGraph()
-        self.identity = QLabel("Interface: —\nIP Address: —\nGateway: —")
-        row.addWidget(self.totals, 2); row.addWidget(self.graph, 4); row.addWidget(self.identity, 2)
-        self.layout.addLayout(row)
-
-    def set_network(self, data: dict[str, object]) -> None:
-        self.totals.setText(f"Total Received: {fmt_bytes(float(data.get('received_total', 0)))}\nTotal Transmitted: {fmt_bytes(float(data.get('transmitted_total', 0)))}")
-        self.identity.setText(f"Interface: {data.get('interface', '—')}\nIP Address: {data.get('address', '—')}\nGateway: {data.get('gateway', '—')}")
-        self.graph.add_value(float(data.get("receive_rate", 0)))
-
-
 class Dashboard(QMainWindow):
     def __init__(self, config: holocron.Config, host: str, agent_command: str) -> None:
         super().__init__(); self.config = config; self.host = host; self.agent_command = agent_command
@@ -382,7 +373,6 @@ class Dashboard(QMainWindow):
         outer.addLayout(cards, 18)
         self.weather = WeatherBar(); outer.addWidget(self.weather, 12)
         self.services = ServiceGrid(); outer.addWidget(self.services, 35)
-        self.network_panel = NetworkPanel(); outer.addWidget(self.network_panel, 15)
 
     def _style(self) -> None:
         base = max(12, min(32, int(self.config.gui_font_size)))
@@ -397,8 +387,11 @@ class Dashboard(QMainWindow):
             QLabel#mainTitle {{ font-size:{main_title}px; font-weight:800; letter-spacing:2px; }}
             QLabel#panelTitle {{ border:0; font-size:{panel_title}px; font-weight:700; }}
             QLabel#metricValue {{ border:0; font-size:{metric}px; font-weight:700; }}
-            QLabel#metricSecondary, QLabel#weatherText {{ border:0; font-size:{base}px; }}
+            QLabel#metricSecondary, QLabel#weatherText {{ border:0; font-size:{base + 2}px; }}
             QLabel#weatherTemp {{ border:0; font-size:{weather_temp}px; font-weight:700; }}
+            QLabel#forecastLabel, QLabel#forecastLabelToday {{ border:0; font-size:{base}px; font-weight:700; }}
+            QLabel#forecastLabelToday {{ color:{GREEN}; text-decoration: underline; }}
+            QLabel#forecastCondition, QLabel#forecastRange {{ border:0; font-size:{round(base * 0.85) + 2}px; }}
             QProgressBar {{ background:#071009; border:1px solid {DIM}; height:12px; }}
             QProgressBar::chunk {{ background:{GREEN}; }}
             QScrollBar {{ width:0; height:0; }}
@@ -442,9 +435,9 @@ class Dashboard(QMainWindow):
         return data
 
     @staticmethod
-    def _weather(location: str, generation: int) -> tuple[int, dict[str, str]]:
+    def _weather(location: str, generation: int) -> tuple[int, dict[str, object]]:
         client = holocron.WeatherClient(location)
-        return generation, client.conditions()
+        return generation, client.fetch()
 
     def refresh_weather(self) -> None:
         """Start a fresh request and invalidate any result for an old location."""
@@ -467,7 +460,7 @@ class Dashboard(QMainWindow):
             except Exception as exc:
                 print(f"snapshot error: {exc}", file=sys.stderr)
             self.snapshot_future = None
-        refresh_due = time.monotonic() - self.last_snapshot_submit >= max(2.0, self.config.refresh_seconds)
+        refresh_due = time.monotonic() - self.last_snapshot_submit >= max(1.0, self.config.refresh_seconds)
         if not self.paused and self.snapshot_future is None and (refresh_due or self.force_refresh):
             self.snapshot_future = self.executor.submit(self._snapshot)
             self.last_snapshot_submit = time.monotonic(); self.force_refresh = False
@@ -495,7 +488,6 @@ class Dashboard(QMainWindow):
         self.net.update_value(min(100, rate / 1_250_000), f"↑ {fmt_rate(float(net.get('transmit_rate', 0)))}", f"↓ {fmt_rate(float(net.get('receive_rate', 0)))}")
         load = str(data.get("load", "—")).split()[0]; self.uptime.update_value(50, str(data.get("uptime", "—")), f"Load: {load}")
         self.services.set_containers(data.get("containers", []))
-        self.network_panel.set_network(net)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() in (Qt.Key.Key_Q, Qt.Key.Key_Escape): self.close()

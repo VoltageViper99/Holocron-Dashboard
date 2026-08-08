@@ -30,43 +30,32 @@ class FakeWeatherResponse:
         return b""
 
 
-FORECAST_RESPONSE = {
-    "current_condition": [{
-        "temp_C": "13", "FeelsLikeC": "11", "windspeedKmph": "17",
-        "humidity": "74", "visibility": "10",
-        "weatherDesc": [{"value": "Mostly cloudy"}],
-    }],
-    "nearest_area": [{
-        "areaName": [{"value": "Burnie"}],
-        "region": [{"value": "Tasmania"}],
-    }],
-    "weather": [
+GEOCODE_RESPONSE = {
+    "results": [
         {
-            "date": "2026-07-29",
-            "mintempC": "7",
-            "maxtempC": "14",
-            "astronomy": [{"sunrise": "07:26 AM", "sunset": "05:25 PM"}],
-            "hourly": [
-                {"weatherDesc": [{"value": "Partly cloudy"}]}
-            ] * 8,
-        },
-        {
-            "date": "2026-07-30",
-            "mintempC": "8",
-            "maxtempC": "15",
-            "hourly": [
-                {"weatherDesc": [{"value": "Light rain"}]}
-            ] * 8,
-        },
-        {
-            "date": "2026-07-31",
-            "mintempC": "6",
-            "maxtempC": "12",
-            "hourly": [
-                {"weatherDesc": [{"value": "Cloudy"}]}
-            ] * 8,
-        },
+            "latitude": -41.05,
+            "longitude": 145.9,
+            "name": "Burnie",
+            "admin1": "Tasmania",
+        }
     ]
+}
+
+FORECAST_RESPONSE = {
+    "current": {
+        "temperature_2m": 13,
+        "apparent_temperature": 11,
+        "wind_speed_10m": 17,
+        "relative_humidity_2m": 74,
+        "visibility": 10000,
+        "weather_code": 3,
+    },
+    "daily": {
+        "time": ["2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01"],
+        "weather_code": [2, 61, 3, 0],
+        "temperature_2m_min": [7, 8, 6, 5],
+        "temperature_2m_max": [14, 15, 12, 11],
+    },
 }
 
 
@@ -208,30 +197,39 @@ class LogFormattingTests(unittest.TestCase):
 
         self.assertEqual(Path(module.__file__).resolve(), Path("ui.py").resolve())
 
-    @patch("holocron.json.load", return_value=FORECAST_RESPONSE)
+    @patch("holocron.json.load", side_effect=[GEOCODE_RESPONSE, FORECAST_RESPONSE])
     @patch("holocron.urlopen", return_value=FakeWeatherResponse())
-    def test_three_day_weather_forecast_is_compact(
+    def test_four_day_weather_forecast_starts_with_today(
         self, mocked_urlopen, mocked_json_load
     ):
-        forecast = WeatherClient("Hobart").forecast()
+        weather = WeatherClient("Hobart").fetch()
 
-        self.assertEqual(len(forecast), 3)
-        self.assertEqual(forecast[0], "WED Partly cloudy  7–14°C")
-        request = mocked_urlopen.call_args.args[0]
-        self.assertIn("/Hobart?", request.full_url)
-        self.assertIn("format=j1", request.full_url)
+        self.assertEqual(len(weather["days"]), 4)
+        self.assertEqual(
+            weather["days"][0],
+            {"label": "TODAY", "condition": "Partly cloudy", "low": "7", "high": "14"},
+        )
+        self.assertEqual(weather["days"][1]["label"], "THU")
+        geocode_request = mocked_urlopen.call_args_list[0].args[0]
+        self.assertIn("geocoding-api.open-meteo.com", geocode_request.full_url)
+        self.assertIn("Hobart", geocode_request.full_url)
+        forecast_request = mocked_urlopen.call_args_list[1].args[0]
+        self.assertIn("api.open-meteo.com", forecast_request.full_url)
+        self.assertIn("forecast_days=4", forecast_request.full_url)
 
-    @patch("holocron.json.load", return_value=FORECAST_RESPONSE)
+    @patch("holocron.json.load", side_effect=[GEOCODE_RESPONSE, FORECAST_RESPONSE])
     @patch("holocron.urlopen", return_value=FakeWeatherResponse())
     def test_graphical_weather_conditions_include_full_strip_data(
         self, mocked_urlopen, mocked_json_load
     ):
-        conditions = WeatherClient("Burnie").conditions()
+        weather = WeatherClient("Burnie").fetch()
 
-        self.assertEqual(conditions["place"], "Burnie, Tasmania")
-        self.assertEqual(conditions["temp"], "13")
-        self.assertEqual(conditions["condition"], "Mostly cloudy")
-        self.assertEqual(conditions["sunrise"], "07:26 AM")
+        self.assertEqual(weather["place"], "Burnie, Tasmania")
+        self.assertEqual(weather["temp"], "13")
+        self.assertEqual(weather["condition"], "Overcast")
+        self.assertEqual(weather["visibility"], "10")
+        self.assertNotIn("sunrise", weather)
+        self.assertNotIn("sunset", weather)
 
     def test_network_sampler_calculates_current_rates(self):
         sampler = NetworkSampler.__new__(NetworkSampler)
